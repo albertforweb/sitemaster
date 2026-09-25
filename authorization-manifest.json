@@ -1,0 +1,37 @@
+{
+  "version": "1.0.0",
+  "permissions": [
+    { "name": "sitemaster:site:read", "description": "Read managed website definitions" },
+    { "name": "sitemaster:site:manage", "description": "Create and manage websites and settings" },
+    { "name": "sitemaster:page:read", "description": "Read draft and published pages" },
+    { "name": "sitemaster:page:create", "description": "Create website pages" },
+    { "name": "sitemaster:page:update", "description": "Update website pages" },
+    { "name": "sitemaster:page:delete", "description": "Delete website pages" },
+    { "name": "sitemaster:content:read", "description": "Read reusable website content" },
+    { "name": "sitemaster:content:manage", "description": "Create, update, and delete reusable website content" },
+    { "name": "sitemaster:deploy", "description": "Deploy or remove a website from local delivery" },
+    { "name": "sitemaster:publish", "description": "Publish website pages and content" }
+  ],
+  "roles": [
+    {
+      "name": "viewer",
+      "description": "Read website drafts and published content",
+      "permissions": ["sitemaster:site:read", "sitemaster:page:read", "sitemaster:content:read"]
+    },
+    {
+      "name": "editor",
+      "description": "Create and edit website content",
+      "permissions": ["sitemaster:site:read", "sitemaster:page:read", "sitemaster:page:create", "sitemaster:page:update", "sitemaster:content:read", "sitemaster:content:manage"]
+    },
+    {
+      "name": "publisher",
+      "description": "Publish website content",
+      "permissions": ["sitemaster:site:read", "sitemaster:page:read", "sitemaster:page:create", "sitemaster:page:update", "sitemaster:content:read", "sitemaster:content:manage", "sitemaster:deploy", "sitemaster:publish"]
+    },
+    {
+      "name": "admin",
+      "description": "Full website administration",
+      "permissions": ["sitemaster:site:read", "sitemaster:site:manage", "sitemaster:page:read", "sitemaster:page:create", "sitemaster:page:update", "sitemaster:page:delete", "sitemaster:content:read", "sitemaster:content:manage", "sitemaster:deploy", "sitemaster:publish"]
+    }
+  ]
+}
