@@ -9,9 +9,12 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test"
+    "seed": "node scripts/seed-demo-content.js",
+    "test": "node --test \"test/*.test.js\"",
+    "test:browser": "node test/browser-harness.mjs"
   },
   "dependencies": {
-    "express": "4.22.3"
+    "express": "4.22.3",
+    "multer": "^2.4.0"
   }
 }

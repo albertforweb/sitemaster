@@ -2,18 +2,38 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 }
 
-function renderStyle(style = {}) {
-  const allowed = ['color', 'backgroundColor', 'fontSize', 'fontWeight', 'textAlign', 'marginTop', 'marginBottom', 'padding', 'borderRadius', 'width'];
-  return allowed.filter((key) => typeof style[key] === 'string' && /^[#a-zA-Z0-9.%(), -]+$/.test(style[key])).map((key) => `${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}:${escapeHtml(style[key])}`).join(';');
+const SAFE_STYLE_RE = /^[#a-zA-Z0-9.%(), -]+$/;
+const STYLE_PROPS = ['color', 'backgroundColor', 'fontSize', 'fontWeight', 'fontStyle', 'textAlign', 'textTransform', 'letterSpacing', 'lineHeight', 'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight', 'padding', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight', 'borderRadius', 'borderWidth', 'borderColor', 'borderStyle', 'width', 'maxWidth', 'minHeight', 'display', 'flexDirection', 'flexWrap', 'justifyContent', 'alignItems', 'gap'];
+
+function styleToCss(style, allowed = STYLE_PROPS) {
+  if (!style || typeof style !== 'object') return '';
+  return allowed
+    .filter((key) => typeof style[key] === 'string' && style[key] && SAFE_STYLE_RE.test(style[key]))
+    .map((key) => `${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}:${escapeHtml(style[key])}`)
+    .join(';');
+}
+
+const SHELL_STYLE_PROPS = ['padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'backgroundColor', 'borderColor', 'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor', 'borderWidth', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderRadius', 'textAlign', 'minHeight', 'gap', 'width', 'maxWidth', 'color', 'fontSize', 'display', 'flexDirection', 'flexWrap', 'justifyContent', 'alignItems'];
+const TEMPLATE_STYLE_PROPS = ['color', 'backgroundColor', 'fontSize', 'fontWeight', 'textAlign', 'letterSpacing', 'textTransform', 'borderRadius', 'padding'];
+
+function renderShellStyle(settings, shell) {
+  const css = styleToCss(settings.shellStyles?.[shell], SHELL_STYLE_PROPS);
+  return css ? ` style="${css}"` : '';
+}
+
+function renderTemplateStyle(settings, key) {
+  const css = styleToCss(settings.templateStyles?.[key], TEMPLATE_STYLE_PROPS);
+  return css ? ` style="${css}"` : '';
 }
 
 const HTML_ELEMENT_TAGS = new Set(['address', 'article', 'aside', 'blockquote', 'br', 'button', 'code', 'dd', 'details', 'dialog', 'div', 'dl', 'dt', 'em', 'figcaption', 'figure', 'footer', 'header', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hgroup', 'hr', 'iframe', 'img', 'input', 'label', 'li', 'main', 'mark', 'nav', 'ol', 'p', 'pre', 'section', 'select', 'small', 'span', 'strong', 'summary', 'table', 'tbody', 'td', 'textarea', 'tfoot', 'th', 'thead', 'time', 'tr', 'ul', 'video']);
 const VOID_HTML_ELEMENT_TAGS = new Set(['br', 'hr', 'img', 'input']);
 
-function renderBlock(block) {
+function renderBlock(block, context = {}) {
+  if (!block || typeof block !== 'object') return '';
   const text = escapeHtml(block.text || '');
-  const style = renderStyle(block.style);
-  const children = (block.children || []).map(renderBlock).join('');
+  const style = styleToCss(block.style);
+  const children = (block.children || []).map((child) => renderBlock(child, context)).join('');
   const attributes = style ? ` style="${style}"` : '';
   if (block.type === 'heading') {
     const level = Math.min(6, Math.max(1, Number(block.level) || 2));
@@ -31,6 +51,12 @@ function renderBlock(block) {
     const tag = HTML_ELEMENT_TAGS.has(block.data?.tag) ? block.data.tag : 'div';
     if (VOID_HTML_ELEMENT_TAGS.has(tag)) return `<${tag}${attributes}${tag === 'img' ? ` src="${escapeHtml(block.url || '')}" alt="${escapeHtml(block.alt || '')}"` : ''}>`;
     return `<${tag}${attributes}>${text}${children}</${tag}>`;
+  }
+  if (block.type === 'content') {
+    const entry = typeof context.resolveContent === 'function' ? context.resolveContent(block.contentType, block.slug) : null;
+    if (!entry) return '';
+    const entryBlocks = (entry.blocks || []).map((child) => renderBlock(child, context)).join('');
+    return `<article class="content-entry" data-content-type="${escapeHtml(entry.contentType || block.contentType || '')}"><h2 class="content-entry-title">${escapeHtml(entry.title || entry.slug || '')}</h2>${entry.excerpt ? `<p class="content-entry-excerpt">${escapeHtml(entry.excerpt)}</p>` : ''}${entryBlocks}</article>`;
   }
   if (['container', 'section', 'div', 'span'].includes(block.type)) return `<${block.type}${attributes}>${text}${children}</${block.type}>`;
   if (block.type === 'form') return `<form${attributes}>${children || `<p>${text || 'Form content'}</p>`}</form>`;
@@ -51,6 +77,42 @@ function renderBlock(block) {
   if (block.type === 'callout') return `<aside class="callout ${escapeHtml(block.tone || 'info')}"${attributes}>${text}</aside>`;
   if (block.type === 'spacer') return `<div class="spacer"${attributes} aria-hidden="true"></div>`;
   return '';
+}
+
+function renderShellBlocks(settings, shell, context) {
+  return (settings.shellBlocks?.[shell] || []).map((block) => renderBlock(block, context)).join('');
+}
+
+const SHELL_BRANDING_IDS = { header: ['logo', 'name'], footer: ['name', 'note'] };
+
+function shellOrderTokens(settings, shell) {
+  const branding = SHELL_BRANDING_IDS[shell] || [];
+  const moved = settings.shellBrandingMoved || {};
+  const blockCount = (settings.shellBlocks?.[shell] || []).length;
+  const provided = Array.isArray(settings.shellOrder?.[shell]) ? settings.shellOrder[shell] : null;
+  const seen = new Set();
+  const tokens = [];
+  const candidates = provided && provided.length ? provided : branding.map((id) => `branding:${id}`);
+  for (const token of candidates) {
+    if (seen.has(token)) continue;
+    if (token.startsWith('branding:')) {
+      const id = token.slice(9);
+      if (!branding.includes(id) || moved[`${shell}.${id}`]) continue;
+    } else if (token.startsWith('block:')) {
+      const index = Number(token.slice(6));
+      if (!Number.isInteger(index) || index < 0 || index >= blockCount) continue;
+    } else continue;
+    seen.add(token); tokens.push(token);
+  }
+  for (const id of branding) {
+    const token = `branding:${id}`;
+    if (!moved[`${shell}.${id}`] && !seen.has(token)) { seen.add(token); tokens.push(token); }
+  }
+  for (let index = 0; index < blockCount; index += 1) {
+    const token = `block:${index}`;
+    if (!seen.has(token)) { seen.add(token); tokens.push(token); }
+  }
+  return tokens;
 }
 
 function renderLogo(settings, siteName) {
@@ -79,19 +141,24 @@ function resolveLayout(input = {}) {
   return { ...LAYOUT_TEMPLATES[template], ...input, template, columnMode: LAYOUT_TEMPLATES[template].columnMode };
 }
 
-function renderColumns(blocks, columns, columnMode = 'single') {
+function renderColumns(blocks, columns, columnMode, context) {
   const buckets = Array.from({ length: columns }, () => []);
   for (const block of blocks || []) {
     const requested = Number(block.data?.column) || 1;
     const column = Math.min(columns, Math.max(1, requested)) - 1;
-    buckets[column].push(renderBlock(block));
+    buckets[column].push(renderBlock(block, context));
   }
   return `<div class="page-columns columns-${columns} layout-${columnMode}">${buckets.map((items) => `<section class="page-column">${items.join('')}</section>`).join('')}</div>`;
 }
 
-export function renderSite(site, page) {
+export function renderBlocks(blocks, context = {}) {
+  return (blocks || []).map((block) => renderBlock(block, context)).join('');
+}
+
+export function renderSite(site, page, options = {}) {
   const settings = site.settings || {};
   const theme = settings.theme || {};
+  const context = { resolveContent: options.resolveContent };
   const title = escapeHtml(page.title || settings.siteName || site.name);
   const siteName = escapeHtml(settings.siteName || site.name);
   const fontFamily = escapeHtml(settings.fontFamily || 'system-ui, sans-serif');
@@ -102,14 +169,28 @@ export function renderSite(site, page) {
   };
   const metadata = page.metadata || {};
   const layout = resolveLayout(metadata.layout || {});
-  const pageMarkup = metadata.customHtml ? metadata.customHtml : renderColumns(page.blocks, layout.columns, layout.columnMode);
+  const moved = settings.shellBrandingMoved || {};
+  const pageMarkup = metadata.customHtml ? metadata.customHtml : renderColumns(page.blocks, layout.columns, layout.columnMode, context);
   const customCss = metadata.customCss || '';
   const customScript = metadata.customScript || '';
-  const topbar = layout.showTopbar === false ? '' : `<header class="site-topbar">${layout.showLogo === false ? '' : renderLogo(settings, siteName)}<span class="site-name">${siteName}</span></header>`;
-  const footer = layout.showFooter === false ? '' : `<footer class="site-footer"><span>${siteName}</span><span>Published with Sitemaster</span></footer>`;
+  const footerNote = settings.footerNote === undefined ? 'Published with Sitemaster' : settings.footerNote;
+  const headerChild = (token) => {
+    if (token === 'branding:logo') return layout.showLogo === false || moved['header.logo'] ? '' : renderLogo(settings, siteName);
+    if (token === 'branding:name') return moved['header.name'] ? '' : `<span class="site-name"${renderTemplateStyle(settings, 'header.name')}>${siteName}</span>`;
+    if (token.startsWith('block:')) { const index = Number(token.slice(6)); return (settings.shellBlocks?.header || [])[index] ? renderBlock((settings.shellBlocks.header)[index], context) : ''; }
+    return '';
+  };
+  const footerChild = (token) => {
+    if (token === 'branding:name') return moved['footer.name'] ? '' : `<span${renderTemplateStyle(settings, 'footer.name')}>${siteName}</span>`;
+    if (token === 'branding:note') return footerNote && !moved['footer.note'] ? `<span${renderTemplateStyle(settings, 'footer.note')}>${escapeHtml(footerNote)}</span>` : '';
+    if (token.startsWith('block:')) { const index = Number(token.slice(6)); return (settings.shellBlocks?.footer || [])[index] ? renderBlock((settings.shellBlocks.footer)[index], context) : ''; }
+    return '';
+  };
+  const topbar = layout.showTopbar === false ? '' : `<header class="site-topbar"${renderShellStyle(settings, 'header')}>${shellOrderTokens(settings, 'header').map(headerChild).join('')}</header>`;
+  const footer = layout.showFooter === false ? '' : `<footer class="site-footer"${renderShellStyle(settings, 'footer')}>${shellOrderTokens(settings, 'footer').map(footerChild).join('')}</footer>`;
   const width = { narrow: '680px', standard: '860px', wide: '1120px', full: 'none' }[layout.contentWidth || 'standard'] || '860px';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} · ${siteName}</title><style>
     :root{--background:${colors.background};--surface:${colors.surface};--text:${colors.text};--muted:${colors.muted};--accent:${colors.accent};--link:${colors.link}}
-    *{box-sizing:border-box}body{margin:0;background:var(--background);color:var(--text);font:16px/1.6 ${fontFamily}}main{width:min(${width},100% - 32px);margin:32px auto;padding:40px;border:1px solid color-mix(in srgb,var(--text) 18%,transparent);border-radius:20px;background:var(--surface);box-shadow:0 24px 70px #0005}.site-topbar{display:flex;align-items:center;gap:12px;margin:-8px 0 38px;padding-bottom:20px;border-bottom:1px solid color-mix(in srgb,var(--text) 16%,transparent);font-weight:700}.site-logo{width:42px;height:42px;display:grid;place-items:center;object-fit:contain;border-radius:12px;background:var(--accent);color:#fff;font-weight:800}.site-name{font-size:18px}.page-columns{display:grid;gap:28px}.columns-1{grid-template-columns:1fr}.columns-2{grid-template-columns:repeat(2,minmax(0,1fr))}.columns-3{grid-template-columns:repeat(3,minmax(0,1fr))}.layout-rail-left.columns-2{grid-template-columns:minmax(150px,.34fr) minmax(0,1fr)}.layout-rail-right.columns-2{grid-template-columns:minmax(0,1fr) minmax(150px,.34fr)}.layout-rail-both.columns-3{grid-template-columns:minmax(140px,.3fr) minmax(0,1fr) minmax(140px,.3fr)}.page-column{min-width:0}h1,h2,h3,h4,h5,h6{line-height:1.2}a{color:var(--link)}img{max-width:100%;border-radius:12px}.callout{padding:16px;border-left:4px solid var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent);border-radius:8px}.spacer{height:32px}.component-navbar{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 18px;border:1px solid color-mix(in srgb,var(--text) 18%,transparent);border-radius:12px;background:color-mix(in srgb,var(--accent) 10%,transparent)}.component-navbar-links{display:flex;gap:14px}.component-badge{display:inline-block;padding:3px 9px;border-radius:999px;background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--link);font-size:12px;font-weight:700}.component-button-group{display:flex;gap:8px;flex-wrap:wrap}.component-button-group .secondary{background:transparent;border:1px solid color-mix(in srgb,var(--text) 20%,transparent)}.component-breadcrumb{display:flex;gap:10px;list-style:none;padding:0;color:var(--muted);font-size:14px}.component-breadcrumb li+li::before{content:'/';margin-right:10px;color:var(--muted)}.component-list-group{list-style:none;margin:0;padding:0;border:1px solid color-mix(in srgb,var(--text) 16%,transparent);border-radius:10px;overflow:hidden}.component-list-group li{padding:11px 14px;border-bottom:1px solid color-mix(in srgb,var(--text) 12%,transparent)}.component-list-group li:last-child{border-bottom:0}.component-accordion details{padding:12px 14px;border:1px solid color-mix(in srgb,var(--text) 16%,transparent);border-radius:9px}.component-accordion summary{cursor:pointer;font-weight:700}.component-pricing{padding:22px;border:1px solid color-mix(in srgb,var(--text) 18%,transparent);border-radius:14px}.component-kicker{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.12em}.component-price{display:block;margin:12px 0;font-size:30px}.component-price small{color:var(--muted);font-size:13px;font-weight:400}.component-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.component-stats>div{padding:18px;border-radius:12px;background:color-mix(in srgb,var(--accent) 10%,transparent)}.component-stats strong,.component-stats span{display:block}.component-stats strong{font-size:24px}.component-stats span{color:var(--muted);font-size:13px}.site-footer{display:flex;justify-content:space-between;gap:16px;margin:38px 0 -12px;padding-top:20px;border-top:1px solid color-mix(in srgb,var(--text) 16%,transparent);color:var(--muted);font-size:13px}@media(max-width:760px){.columns-2,.columns-3,.component-stats{grid-template-columns:1fr}.component-navbar,.component-navbar-links{align-items:flex-start;flex-direction:column}.site-footer{align-items:flex-start;flex-direction:column}}${customCss}@media(max-width:600px){main{margin:16px auto;padding:24px}}
+    *{box-sizing:border-box}body{margin:0;background:var(--background);color:var(--text);font:16px/1.6 ${fontFamily}}main{width:min(${width},100% - 32px);margin:32px auto;padding:40px;border:1px solid color-mix(in srgb,var(--text) 18%,transparent);border-radius:20px;background:var(--surface);box-shadow:0 24px 70px #0005}.site-topbar{display:flex;align-items:center;gap:12px;margin:-8px 0 38px;padding-bottom:20px;border-bottom:1px solid color-mix(in srgb,var(--text) 16%,transparent);font-weight:700}.site-topbar .site-name{font-size:18px}.site-logo{width:42px;height:42px;display:grid;place-items:center;object-fit:contain;border-radius:12px;background:var(--accent);color:#fff;font-weight:800}.site-footer{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:42px;padding-top:20px;border-top:1px solid color-mix(in srgb,var(--text) 16%,transparent);color:var(--muted);font-size:14px}.page-columns{display:grid;gap:28px}.columns-1{grid-template-columns:1fr}.columns-2{grid-template-columns:repeat(2,minmax(0,1fr))}.columns-3{grid-template-columns:repeat(3,minmax(0,1fr))}.layout-rail-left.columns-2{grid-template-columns:minmax(150px,.34fr) minmax(0,1fr)}.layout-rail-right.columns-2{grid-template-columns:minmax(0,1fr) minmax(150px,.34fr)}.layout-rail-both.columns-3{grid-template-columns:minmax(140px,.3fr) minmax(0,1fr) minmax(140px,.3fr)}.page-column{min-width:0}h1,h2,h3,h4,h5,h6{line-height:1.2}a{color:var(--link)}img{max-width:100%;border-radius:12px}.callout{padding:16px;border-left:4px solid var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent);border-radius:8px}.spacer{height:32px}.component-navbar{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 18px;border:1px solid color-mix(in srgb,var(--text) 18%,transparent);border-radius:12px;background:color-mix(in srgb,var(--accent) 10%,transparent)}.component-navbar-links{display:flex;gap:14px}.component-badge{display:inline-block;padding:3px 9px;border-radius:999px;background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--link);font-size:12px;font-weight:700}.component-button-group{display:flex;gap:8px;flex-wrap:wrap}.button-link{display:inline-block;padding:10px 16px;border-radius:10px;background:var(--accent);color:#fff;text-decoration:none;font-weight:600}.button-link.secondary{background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--link)}.component-pricing,.component-card,.component-hero,.component-cta,.component-feature-grid,.component-stats,.media-placeholder,.image-placeholder{border-radius:14px}
   </style></head><body><main>${topbar}${pageMarkup}${footer}</main>${customScript ? `<script type="module">${customScript}</script>` : ''}</body></html>`;
 }

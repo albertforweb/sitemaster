@@ -7,6 +7,11 @@ const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 export const PORT = Number(process.env.PORT || 5000);
 export const DB_PATH = process.env.SITEMASTER_DB_PATH || path.join(ROOT_DIR, 'data', 'sitemaster.db');
 export const DEPLOYMENTS_DIR = process.env.SITEMASTER_DEPLOYMENTS_DIR || path.join(ROOT_DIR, 'data', 'deployments');
+export const UPLOADS_DIR = process.env.SITEMASTER_UPLOADS_DIR || path.join(ROOT_DIR, 'data', 'uploads');
+export const SITES_DIR = process.env.SITEMASTER_SITES_DIR || path.join(ROOT_DIR, 'data', 'sites');
+export const MEDIA_MAX_BYTES = Number(process.env.SITEMASTER_MEDIA_MAX_BYTES || 8 * 1024 * 1024);
+export const CONTENT_PAGE_SIZE = Number(process.env.SITEMASTER_CONTENT_PAGE_SIZE || 20);
+export const CONTENT_PAGE_MAX = 100;
 export const SITEMASTER_CLIENT_ID = process.env.IAM_CLIENT_ID || 'sitemaster-api';
 export const IAM_INTROSPECT_URL = process.env.IAM_INTROSPECT_URL || '';
 export const IAM_INTROSPECT_TIMEOUT = Number(process.env.IAM_INTROSPECT_TIMEOUT || 5000);
@@ -47,3 +52,5 @@ export const IAM_CLIENT_SECRET = process.env.IAM_CLIENT_SECRET || readClientSecr
 
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true, mode: 0o700 });
 fs.mkdirSync(DEPLOYMENTS_DIR, { recursive: true, mode: 0o750 });
+fs.mkdirSync(UPLOADS_DIR, { recursive: true, mode: 0o750 });
+fs.mkdirSync(SITES_DIR, { recursive: true, mode: 0o750 });
